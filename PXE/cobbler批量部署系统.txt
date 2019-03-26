@@ -1,0 +1,239 @@
+Cobbler介绍
+
+	Cobbler是一个Linux服务器安装的服务，可以通过网络启动(PXE)的方式来快速安装、重装物理服务器和虚拟机，同时还可以管理DHCP，DNS等
+	
+	Cobbler可以使用命令行方式管理，也提供了基于Web的界面管理工具(cobbler-web)，还提供了API接口，可以方便二次开发使用。
+
+	Cobbler是较早前的kickstart的升级版，优点是比较容易配置，还自带web界面比较易于管理。
+
+	Cobbler内置了一个轻量级配置管理系统，但它也支持和其它配置管理系统集成，如Puppet，暂时不支持SaltStack。
+	
+
+	
+	
+示例：部署cobbler实现centos7, centos6系统安装 
+
+
+1) SELinux, firewalld, 计算机名
+
+2) 配置网卡IP地址	
+
+[root@cobbler ~]# nmcli connection add type ethernet ifname ens8 con-name ens8
+[root@cobbler ~]# nmcli connection modify ens8 ipv4.addresses "192.168.87.101/24"
+[root@cobbler ~]# nmcli connection modify ens8 ipv4.method manual
+[root@cobbler ~]# nmcli connection reload 
+[root@cobbler ~]# nmcli connection up ens8 
+
+在/var/www/下挂载磁盘
+
+
+3) 安装EPEL源
+
+[root@cobbler ~]# yum install -y epel-release
+
+
+4) 安装cobbler软件 
+
+[root@cobbler ~]# yum install -y cobbler cobbler-web dhcp tftp-server xinetd httpd
+
+[root@cobbler ~]# systemctl start httpd
+[root@cobbler ~]# systemctl enable httpd
+
+[root@cobbler ~]# systemctl start cobblerd
+[root@cobbler ~]# systemctl enable cobblerd
+
+
+5) 运行cobbler check检测cobbler配置
+
+[root@cobbler ~]# cobbler check
+The following are potential configuration items that you may want to fix:
+
+1 : The 'server' field in /etc/cobbler/settings must be set to something other than localhost, or kickstarting features will not work.  This should be a resolvable hostname or IP for the boot server as reachable by all machines that will use it.
+2 : For PXE to be functional, the 'next_server' field in /etc/cobbler/settings must be set to something other than 127.0.0.1, and should match the IP of the boot server on the PXE network.
+3 : SELinux is enabled. Please review the following wiki page for details on ensuring cobbler works correctly in your SELinux environment:
+    https://github.com/cobbler/cobbler/wiki/Selinux
+4 : change 'disable' to 'no' in /etc/xinetd.d/tftp
+5 : some network boot-loaders are missing from /var/lib/cobbler/loaders, you may run 'cobbler get-loaders' to download them, or, if you only want to handle x86/x86_64 netbooting, you may ensure that you have installed a *recent* version of the syslinux package installed and can ignore this message entirely.  Files in this directory, should you want to support all architectures, should include pxelinux.0, menu.c32, elilo.efi, and yaboot. The 'cobbler get-loaders' command is the easiest way to resolve these requirements.
+6 : enable and start rsyncd.service with systemctl
+7 : debmirror package is not installed, it will be required to manage debian deployments and repositories
+8 : The default password used by the sample templates for newly installed machines (default_password_crypted in /etc/cobbler/settings) is still set to 'cobbler' and should be changed, try: "openssl passwd -1 -salt 'random-phrase-here' 'your-password-here'" to generate new one
+9 : fencing tools were not found, and are required to use the (optional) power management features. install cman or fence-agents to use them
+
+Restart cobblerd and then run 'cobbler sync' to apply changes.
+[root@cobbler ~]# 
+
+按照上述提示进行cobbler的配置，重启cobblerd服务，并使用cobbler sync保存配置
+
+
+6) 配置DHCP服务
+
+[root@cobbler ~]# vim /etc/cobbler/settings 
+
+	manage_dhcp: 1
+
+[root@cobbler ~]# vim /etc/cobbler/dhcp.template 
+
+subnet 192.168.87.0 netmask 255.255.255.0 {
+     range dynamic-bootp        192.168.87.10 192.168.87.20;
+
+[root@cobbler ~]# systemctl restart cobblerd
+[root@cobbler ~]# cobbler sync
+
+
+7) 启动tftp服务  pxelinux.0
+
+[root@cobbler ~]# systemctl restart xinetd
+[root@cobbler ~]# systemctl enable xinetd
+
+[root@cobbler ~]# ss -anup | grep :69
+UNCONN     0      0            *:69                       *:*                   users:(("xinetd",pid=6032,fd=5))
+[root@cobbler ~]# 
+
+
+8) 导入centos7.2镜像 
+
+[root@cobbler ~]# mount /dev/cdrom /mnt/
+[root@cobbler ~]# cobbler import --path=/mnt --name=centos7.2 --arch=x86_64
+
+
+9) 查看cobbler组件 
+
+[root@cobbler ~]# cobbler list
+distros:
+   centos7.2-x86_64
+
+profiles:
+   centos7.2-x86_64
+
+systems:
+
+repos:
+
+images:
+
+mgmtclasses:
+
+packages:
+
+files:
+
+
+10) 查看profile关联的ks文件 
+
+[root@cobbler kickstarts]# cobbler profile report centos7.2-x86_64
+Name                           : centos7.2-x86_64
+TFTP Boot Files                : {}
+Comment                        : 
+DHCP Tag                       : default
+Distribution                   : centos7.2-x86_64
+Enable gPXE?                   : 0
+Enable PXE Menu?               : 1
+Fetchable Files                : {}
+Kernel Options                 : {}
+Kernel Options (Post Install)  : {}
+Kickstart                      : /var/lib/cobbler/kickstarts/sample_end.ks
+Kickstart Metadata             : {}
+
+
+
+
+
+示例：部署centos6系统 
+
+[root@cobbler ~]# mount /dev/cdrom /mnt/
+[root@cobbler ~]# cobbler import --path=/mnt --name=centos6.6 --arch=x86_64
+
+[root@cobbler ~]# cobbler list
+distros:
+   centos6.6-x86_64
+   centos7.2-x86_64
+
+profiles:
+   centos6.6-x86_64
+   centos7.2-x86_64
+
+systems:
+
+repos:
+
+images:
+
+mgmtclasses:
+
+packages:
+
+files:
+
+
+
+
+cobbler管理工具：
+
+	1、命令行工具
+	
+		1) 查看安装源
+			[root@cobbler_server ~]# cobbler distro list
+	
+			[root@cobbler_server ~]# cobbler distro report CentOS7.4-x86_64
+
+		2) 查看安装源配置
+
+			[root@cobbler_server ~]# cobbler profile list
+
+			[root@cobbler_server ~]# cobbler profile report CentOS7.4-x86_64
+
+		3) 配置自定义的ks文件 
+			[root@cobbler kickstarts]# cobbler profile edit --name=centos7.2-x86_64 --kickstart=/var/lib/cobbler/kickstarts/centos7.ks 
+
+		
+				
+		
+	2、web图形化工具 
+
+		安装旧版本django
+		
+		# yum install -y python2-pip 
+	    # pip install django==1.7 
+		# systemctl restart cobblerd httpd 
+		# cobbler sync 
+
+
+		访问cobbler的web管理界面
+
+		 https://192.168.122.105/cobbler_web
+		 
+			默认用户名、密码均为cobbler
+			
+			
+			
+cobbler定制系统 
+
+	[root@cobbler_server ~]# cobbler system add --name=test_centos6.6 --profile=CentOS6.6-x86_64 --mac-address=52:54:00:bc:54:0e --interface=eth0 
+	
+	[root@cobbler_server ~]# cobbler system list
+	   test_centos6.6
+
+ 			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+
+
