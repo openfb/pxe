@@ -1,0 +1,225 @@
+git	版本控制系统
+
+	作用：
+		记录文本文件的修改情况，便于回退到某一个版本
+		只能记录文本文件(配置文件、代码文件);  word文档(非文本文件)
+		有助于多人同时编辑某个文件 
+
+
+安装Git
+
+在主机上运行git命令，如果可以看到git命令的帮助，意味着git已经安装
+
+[root@localhost ~]# git
+usage: git [--version] [--exec-path[=GIT_EXEC_PATH]] [--html-path]
+           [-p|--paginate|--no-pager] [--no-replace-objects]
+           [--bare] [--git-dir=GIT_DIR] [--work-tree=GIT_WORK_TREE]
+           [--help] COMMAND [ARGS]
+		   
+如果没有安装，可直接使用如下命令进行安装 ：
+
+[root@node01 ~]# yum install -y git
+ 
+ 
+使用git的基本设置
+ 
+[root@node01 ~]# git config --global user.name "Martin"
+[root@node01 ~]# git config --global user.email "Martin@qq.com"
+[root@node01 ~]# git config --global color.ui true
+		
+
+
+创建版本库
+
+什么是版本库呢？版本库又名仓库，英文名repository，你可以简单理解成一个目录，这个目录里面的所有文件都可以被Git管理起来，每个文件的修改、删除，Git都能跟踪，以便任何时刻都可以追踪历史，或者在将来某个时刻可以“还原”。
+
+例如将/project目录创建为版本库
+
+[root@node01 ~]# mkdir /project
+[root@node01 ~]# cd /project/
+[root@node01 project]# git init
+Initialized empty Git repository in /project/.git/
+[root@node01 project]# ls -a
+.  ..  .git
+[root@node01 project]# 
+
+
+版本库创建完成后，在该目录会生成.git隐藏目录，通过该目录下的文件，git可实现跟踪文件记录文件的修改信息
+
+
+
+1、提交文件修改
+
+	# git add <file_name>
+	# git commit -m "说明信息" <file_name> 
+	
+
+2、查看git仓库状态 
+
+	# git status  
+	
+	
+3、版本回退 
+
+	# git reset --hard <状态>
+
+	1) git内部变量 
+	
+		HEAD 		当前状态 
+		HEAD^		上一次状态
+		HEAD^^		上上次状态 
+		HEAD~10		
+
+	2) 修改ID
+	
+		a. 查看操作ID
+		
+			# git reflog <file_name>
+			
+			# git reset --hard <file_name> 
+			
+			
+			
+
+git基本概念
+
+	工作区
+	暂存区 
+	
+
+4、撤销文件修改 
+
+	1) 撤销未提交的修改
+	
+		[root@git_server data]# git checkout -- 1.txt
+
+	2) 撤销已经提交到暂存区的修改 
+	
+		[root@git_server data]# git reset HEAD 1.txt
+		[root@git_server data]# git checkout -- 1.txt
+
+	3) 撤销已经提交到工作区的修改
+	
+		[root@git_server data]# git reset --hard caff0fc
+
+
+
+5、删除文件 
+
+	[root@git_server data]# git rm -f 2.txt 
+	[root@git_server data]# git commit -m "remove 2.txt"
+
+
+
+
+分支 branch 
+
+1) 查看分支 
+
+[root@git_server data]# git branch 
+
+
+2) 创建分支 
+
+[root@git_server data]# git branch test
+[root@git_server data]# git branch 
+
+	创建并切换分支 
+
+	[root@git_server data]# git checkout -b test
+	Switched to a new branch 'test'
+	[root@git_server data]# git branch 
+	  master
+	* test
+
+
+
+3) 切换分支 
+
+[root@git_server data]# git checkout test
+Switched to branch 'test'
+[root@git_server data]# git branch 
+  master
+* test
+
+
+4) 删除分支  
+
+[root@git_server data]# git branch -d test
+Deleted branch test (was c37f36d).
+
+
+
+5) 合并分支 
+
+[root@git_server data]# git merge 分支名称 
+
+	
+		
+	
+		
+
+
+
+
+git实现文件集中管理 
+
+	1、github  https://github.com
+
+	2、搭建git服务器  ----  gitlab软件 
+
+
+
+示例：使用gitlab部署git服务器
+
+[root@gitlab ~]# hostnamectl set-hostname gitlab.linux.com 
+
+[root@gitlab ~]# cat /etc/hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+
+192.168.122.10	gitlab.linux.com
+[root@gitlab ~]# 
+
+
+安装gitlab软件
+
+[root@gitlab ~]# yum install -y gitlab-ce-10.1.5-ce.0.el7.x86_64.rpm 
+
+[root@gitlab ~]# vim /etc/gitlab/gitlab.rb 
+
+  13 external_url 'http://gitlab.linux.com'
+
+[root@gitlab ~]# gitlab-ctl reconfigure 
+
+
+在浏览器访问gitlab
+
+	http://gitlab.linux.com 
+
+
+
+客户端克隆仓库：
+
+git clone  仓库地址 
+
+客户端上传本地文件：
+
+git push -u origin master 
+
+
+默认用户名root
+
+
+
+
+
+
+
+
+
+
+
+
+
+	

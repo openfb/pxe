@@ -1,0 +1,271 @@
+批量部署Linux系统 
+
+	PXE
+	Cobbler
+	
+PXE
+
+基于PXE自动安装系统所需组件
+
+1) syslinux		pxelinux.0 
+
+    提供适用于不同的操作系统的各种bootloader文件
+	
+2) tftp-server服务
+
+   基于UDP文件传输, 共享内核(vmlinuz), 系统初始化镜像文件(initrd.img)
+   
+
+3) DHCP服务器
+    DHCP动态主机配置协议会在预引导加载操作系统的时候动态自动分配一个IP地址，同时完成网络加载的主机的设定；需要在其地址池subnet配置中配置一下参数：
+		filename "pxelinux.0";
+			基于网卡引导时要加载的initial  boot file的文件名；
+		next-server  HOST;
+			要是一个tftp-servr，简单文件传输协议
+
+4) file server(FTP, HTTP, NFS)
+
+	提供安装镜像文件 
+
+
+
+
+
+
+示例1：搭建PXE服务器，实现centos7.4的系统安装 
+
+1) SELinux, firewalld, 计算机名称, 本地yum源，IP地址
+
+2) 安装软件 
+
+[root@pxe ~]# yum install -y dhcp tftp-server xinetd syslinux vsftpd
+
+3) 通过FTP服务共享centos7u2光盘中所有文件 
+
+[root@pxe ~]# mkdir /var/ftp/centos7u2
+
+[root@pxe ~]# df -hT
+/dev/vdb1               ext4      7.8G   36M  7.3G    1% /var/ftp/centos7u2
+
+[root@pxe ~]# cp -r /mnt/* /var/ftp/centos7u2/ &
+
+[root@pxe ~]# systemctl start vsftpd
+[root@pxe ~]# systemctl enable vsftpd
+Created symlink from /etc/systemd/system/multi-user.target.wants/vsftpd.service to /usr/lib/systemd/system/vsftpd.service.
+[root@pxe ~]# 
+[root@pxe ~]# ss -antp | grep :21
+LISTEN     0      32          :::21                      :::*                   users:(("vsftpd",pid=2658,fd=3))
+
+
+
+
+4) 配置DHCP服务
+
+
+[root@pxe ~]# vim /etc/dhcp/dhcpd.conf 
+
+subnet 192.168.87.0 netmask 255.255.255.0 {
+  range 192.168.87.10 192.168.87.20;
+  next-server 192.168.87.101;				>>> tftp服务器地址，用于告诉客户端通过哪台tftp服务器查找网络引导文件
+  filename "pxelinux.0";					>>> 指定网络引导文件的文件名称 
+}
+
+[root@pxe ~]# systemctl start dhcpd
+[root@pxe ~]# systemctl enable dhcpd
+Created symlink from /etc/systemd/system/multi-user.target.wants/dhcpd.service to /usr/lib/systemd/system/dhcpd.service.
+[root@pxe ~]# 
+[root@pxe ~]# ss -anup | grep :67
+UNCONN     0      0            *:67                       *:*                   users:(("dhcpd",pid=2768,fd=8))
+
+
+5) 配置tftp服务 
+
+[root@pxe tftpboot]# cp /usr/share/syslinux/pxelinux.0 /var/lib/tftpboot/
+
+[root@pxe isolinux]# cp /mnt/isolinux/* /var/lib/tftpboot/
+
+[root@pxe tftpboot]# pwd
+/var/lib/tftpboot
+[root@pxe tftpboot]# mkdir pxelinux.cfg
+[root@pxe tftpboot]# cp isolinux.cfg pxelinux.cfg/default
+
+[root@pxe tftpboot]# vim pxelinux.cfg/default 
+
+label linux
+  menu label ^Install CentOS7u2
+  kernel vmlinuz			            >>>指定centos7.2的内核文件，相对路径，相对于tftp的根目录 
+  append initrd=initrd.img inst.stage2=ftp://192.168.87.101/centos7u2 inst.repo=ftp://192.168.87.101/centos7u2 
+  
+			>>> initrd=initrd.img	>>>指定centos7.2的初始化文件
+			>>> inst.stage2 	    >>>告诉客户端去哪个url地址搜索光盘所有文件 
+			
+			
+  
+ 
+[root@pxe ~]# vim /etc/xinetd.d/tftp 
+
+	disable = no
+
+
+[root@pxe ~]# systemctl restart xinetd
+[root@pxe ~]# systemctl enable xinetd
+[root@pxe ~]# 
+[root@pxe ~]# ss -anup | grep 69
+UNCONN     0      0            *:69                       *:*                   users:(("xinetd",pid=3084,fd=5))
+
+
+测试 
+
+
+
+
+
+示例2：实现centos6.6安装 
+
+
+1) 通过tftp共享 centos6的内核及初始化镜像 (换光盘)
+
+[root@pxe ~]# mkdir /var/lib/tftpboot/centos6u6
+[root@pxe ~]# cp /mnt/isolinux/vmlinuz /mnt/isolinux/initrd.img /var/lib/tftpboot/centos6u6
+
+
+2) 添加centos6菜单项
+
+[root@pxe ~]# vim /var/lib/tftpboot/pxelinux.cfg/default 
+
+label centos6
+  menu label ^Install CentOS6u6
+  kernel centos6u6/vmlinuz
+  append initrd=centos6u6/initrd.img 
+
+
+
+3) 通过ftp共享centos6光盘中所有文件 
+
+[root@pxe ~]# df -hT | grep centos6u6
+/dev/vdc1               ext4      7.8G   36M  7.3G    1% /var/ftp/centos6u6
+
+
+[root@pxe ~]# cp -r /mnt/* /var/ftp/centos6u6/ &
+
+
+
+
+
+部署kickstart文件实现系统的自动安装
+
+• Kickstart安装选项：     包含语言，防火墙，密码，网络，分区的设置等；
+
+• %Pre部分：            安装前解析的脚本，通常用来生成特殊的ks配置，比如由一段程序决定磁盘分区等；
+
+• %Package 部分：         安装包的选择，可以是 @base  这样的组的形式，也可以是这样 httpd 包的形式；
+
+• %Post  部分：           安装后执行的脚本，通常用来做系统的初始化设置。比如启动的服务，相关的设定等。
+
+
+方法1) anaconda-ks.cfg
+
+方法2) system-config-kickstart 
+
+# yum groupinstall "GNOME Desktop"
+# yum install -y system-config-kickstart
+
+
+使用kickstart文件
+
+1、拷贝到ftp根目录共享
+
+2、编辑菜单文件 
+
+label linux
+  menu label ^Install CentOS7u2
+  kernel vmlinuz
+  append initrd=initrd.img inst.stage2=ftp://192.168.87.101/centos7u2 inst.repo=ftp://192.168.87.101/centos7u2 ks=ftp://192.168.87.101/centos7.cfg
+
+
+
+=========================================================
+
+
+
+
+[root@pxe_server ftp]# cat centos74.cfg 
+#platform=x86, AMD64, 或 Intel EM64T
+#version=DEVEL
+# Install OS instead of upgrade
+install
+# Keyboard layouts
+keyboard 'us'
+# Root password
+rootpw --iscrypted $1$LQbwNUlq$8oxE7s/PnUAo.RGIT96Fe/
+# System timezone
+timezone Asia/Shanghai
+# Use network installation
+url --url="ftp://172.16.1.10/centos7.4"
+# System language
+lang en_US
+# Firewall configuration
+firewall --disabled
+# System authorization information
+auth  --useshadow  --passalgo=sha512
+# Use text mode install
+text
+firstboot --disable
+# SELinux configuration
+selinux --disabled
+
+# Network information
+network  --bootproto=dhcp --device=eth0
+# Reboot after installation
+reboot
+# System bootloader configuration
+bootloader --location=mbr
+# Clear the Master Boot Record
+zerombr
+# Partition clearing information
+clearpart --all --initlabel
+# Disk partitioning information
+part /boot --fstype="xfs" --size=200
+part swap --fstype="swap" --size=2048
+part / --fstype="xfs" --grow --size=1
+
+%packages
+rsync
+lftp
+vim-enhanced
+net-tools
+bash-completion
+@core
+%end
+
+
+%post --interpreter=/bin/bash
+mkdir /etc/yum.repos.d/bak
+mv /etc/yum.repos.d/C* /etc/yum.repos.d/bak
+cat << eof > /etc/yum.repos.d/centos.repo
+[centos7.4]
+name=centos7.4
+baseurl=ftp://10.100.100.252/centos7.4
+enabled=1
+gpgcheck=0
+eof
+
+sed -ri '/^#Port/c \Port 2345' /etc/ssh/sshd_config
+systemctl restart sshd
+%end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
